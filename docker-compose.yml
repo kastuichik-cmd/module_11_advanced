@@ -1,0 +1,116 @@
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: my-db
+    environment:
+      POSTGRES_DB: mydb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./pgdata:/var/lib/postgresql/data
+    networks:
+      - app-network
+
+  mongo:
+    image: mongo:7.0
+    container_name: mongo
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: example
+      MONGO_INITDB_DATABASE: db
+    ports:
+      - "27017:27017"
+    volumes:
+      - ./mongodata:/data/db
+    networks:
+      - app-network
+
+  redis:
+    image: redis:alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    networks:
+      - app-network
+
+  gateway:
+    build: ./API-Gateway
+    container_name: gateway-service
+    restart: on-failure
+    ports:
+      - "8080:8080"
+    environment:
+      JWT_SECRET: Zm9vYmFyLXNlY3JldC12ZXJ5LXJhbmRvbS1zdHJpbmctdGhhdC1zaG91bGQtYmUtMzItYnl0ZXM=
+    depends_on:
+      - config-server
+      - eureka-server
+    networks:
+      - app-network
+
+  config-server:
+    build: ./config-server
+    container_name: config-server
+    restart: on-failure
+    ports:
+      - "8888:8888"
+    networks:
+      - app-network
+
+  eureka-server:
+    build: ./eureka
+    container_name: eureka-server
+    ports:
+      - "8761:8761"
+    depends_on:
+      - db
+    networks:
+      - app-network
+
+  app:
+    build: book-service
+    container_name: my-app
+    restart: unless-stopped
+    ports:
+      - "8082:8082"
+    environment:
+      SPRING_PROFILES_ACTIVE: default
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/mydb
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+    depends_on:
+      - db
+      - config-server
+      - eureka-server
+    networks:
+      - app-network
+
+  notification:
+    build: ./notification-service
+    restart: unless-stopped
+    depends_on:
+      - config-server
+      - eureka-server
+    networks:
+      - app-network
+
+  auth-service:
+    build: ./auth-service
+    container_name: auth-service
+    restart: unless-stopped
+    environment:
+      JWT_SECRET: Zm9vYmFyLXNlY3JldC12ZXJ5LXJhbmRvbS1zdHJpbmctdGhhdC1zaG91bGQtYmUtMzItYnl0ZXM=
+      SPRING_PROFILES_ACTIVE: default
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/mydb
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+    depends_on:
+      - db
+      - config-server
+      - eureka-server
+    networks:
+      - app-network
+networks:
+  app-network:
+    driver: bridge
